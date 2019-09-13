@@ -1,8 +1,8 @@
 {
-  "name": "tymfrontiers/php-api-devapp",
+  "name": "tymfrontiers-cdn/php-api-devapp",
   "description": "PHP: API developer app",
   "keywords": ["php","API","developer","app"],
-  "homepage": "https://github.com/tymfrontiers/php-api-devapp",
+  "homepage": "https://github.com/tymfrontiers-cdn/php-api-devapp",
   "type": "library",
   "license": "MIT",
   "authors": [
