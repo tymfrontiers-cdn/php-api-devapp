@@ -152,7 +152,7 @@ class DevApp{
     return (bool) \preg_match('/^([a-z0-9\.\-\_]{5,35})$/s', $name);
   }
   private static function _checkEnv(){
-    global $databse;
+    global $database;
     if ( !$database instanceof \TymFrontiers\MySQLDatabase ) {
       if(
         !\defined("MYSQL_DEV_DB") ||
