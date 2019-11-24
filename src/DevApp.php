@@ -11,6 +11,8 @@ class DevApp{
   protected static $_primary_key='name';
   protected static $_db_name=MYSQL_DEV_DB;
   protected static $_table_name="app";
+  protected static $_prop_type = [];
+  protected static $_prop_size = [];
   protected static $_db_fields = [
     "name",
     "status",
@@ -24,6 +26,7 @@ class DevApp{
     "title",
     "_created"
   ];
+
 
   public $name;
   public $status="PENDING";
