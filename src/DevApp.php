@@ -10,47 +10,62 @@ class DevApp{
 
   protected static $_primary_key='name';
   protected static $_db_name=MYSQL_DEV_DB;
-  protected static $_table_name="app";
+  protected static $_table_name="apps";
   protected static $_prop_type = [];
   protected static $_prop_size = [];
   protected static $_db_fields = [
     "name",
+    "live",
     "status",
     "user",
     "_pu_key",
     "_pr_key",
     "prefix",
-    "api_max_request_tym",
-    "url",
+    "request_timeout",
+    "domain",
     "endpoint",
     "title",
-    "_created"
+    "description",
+    "_created",
+    "_updated"
   ];
 
 
   public $name;
-  public $status="PENDING";
+  public $live = false;
+  public $status = "PENDING";
   public $user;
-  public $url;
-  public $endpoint;
+  public $domain = null;
+  public $endpoint = null;
   public $title;
+  public $description;
   public $prefix;
-  public $api_max_request_tym = "+30 Seconds";
+  public $request_timeout = "5S";
 
   private $_pu_key;
   private $_pr_key;
   protected $_created;
+  protected $_updated;
   protected $_status = ["PENDING","ACTIVE","SUSPENDED","BANNED"];
+  public $request_timeout_opt = [
+    "5S" => "5 Seconds",
+    "15S" => "15 Seconds",
+    "30S" => "30 Seconds",
+    "5M" => "5 Minutes", // development
+    "30M" => "30 Minutes" // development
+  ];
 
   public $errors = [];
 
-  function __construct($app, string $puk="",bool $strict=false){
-    self::_checkEnv();
-    if( \is_array($app) ){
-      $this->_createNew($app);
-    }else{
-      if( self::validName($app) && !empty($puk) ){
-        $this->_objtize($app,$puk,$strict);
+  function __construct($app = [], string $puk="", bool $strict=false){
+    if (!empty($app)) {
+      self::_checkEnv();
+      if( \is_array($app) ){
+        $this->_createNew($app);
+      }else{
+        if( self::validName($app) && !empty($puk) ){
+          $this->_objtize($app,$puk,$strict);
+        }
       }
     }
   }
@@ -72,13 +87,14 @@ class DevApp{
     if( \is_array($app) && (
       \array_key_exists('name',$app) &&
       \array_key_exists('prefix',$app) &&
-      \array_key_exists('api_max_request_tym',$app) &&
+      \array_key_exists('request_timeout',$app) &&
       \array_key_exists('user',$app) &&
-      \array_key_exists('title',$app)
+      \array_key_exists('title',$app) &&
+      \array_key_exists('description',$app)
       ) ){
       $app['name'] = \strtolower($app['name']);
       if( self::nameExists($app['name']) ){
-        $this->errors['Self'][] = [0,256, "App name({$app['name']}) is not available.",__FILE__, __LINE__];
+        $this->errors['self'][] = [0,256, "App name({$app['name']}) is not available.",__FILE__, __LINE__];
         return false;
       }
       foreach($app as $key=>$val){
@@ -87,6 +103,7 @@ class DevApp{
         }
       }
       $this->name = \strtolower($this->name);
+      $this->live = false;
       $this->status = 'PENDING';
       $this->_pu_key = "puk-" . Data::uniqueRand('',48,Data::RAND_MIXED);
       $this->_pr_key = "prk-" . Data::uniqueRand('',64,Data::RAND_MIXED);
@@ -94,31 +111,33 @@ class DevApp{
         return true;
       }else{
         $this->name = null;
-        $this->errors['Self'][] = [0,256, "Request failed at this this tym.",__FILE__, __LINE__];
+        $this->errors['self'][] = [0,256, "Request failed at this this tym.",__FILE__, __LINE__];
         if( \class_exists('\TymFrontiers\InstanceError') ){
           $ex_errors = new InstanceError($database);
           if( !empty($ex_errors->errors) ){
             foreach( $ex_errors->get(null,true) as $key=>$errs ){
               foreach($errs as $err){
-                $this->errors['Self'][] = [0,256, $err,__FILE__, __LINE__];
+                $this->errors['self'][] = [0,256, $err,__FILE__, __LINE__];
               }
             }
           }
         }
       }
+    } else {
+      $this->errors['self'][] = [0,256, "Missing required parameters.",__FILE__, __LINE__];
     }
     return false;
   }
   private function _objtize(string $name, string $puk, bool $strict=false){
     self::_checkEnv();
     global $database;
-    $dev_prim_key = (New Developer)->primaryKey();
     $name = \strtolower($database->escapeValue($name));
     $puk = $database->escapeValue($puk);
-    $sql = "SELECT a.name,a.status,a.user,a.url, a.prefix, a.api_max_request_tym, a.endpoint,a.title,a._pu_key,a._pr_key,a._created,
+    $adm_db = MYSQL_ADMIN_DB;
+    $sql = "SELECT a.name, a.live, a.status,a.user,a.domain, a.prefix, a.request_timeout, a.endpoint,a.title,a._pu_key,a._pr_key,a._created,
                    d.status AS dev_status
             FROM :db:.:tbl: AS a
-            LEFT JOIN :db:.developer AS d ON a.user = d.`{$dev_prim_key}`
+            LEFT JOIN `{$adm_db}`.user AS d ON a.user = d.`_id`
             WHERE a.name='{$name}' AND a._pu_key = '{$puk}'
             LIMIT 1";
     $obj = self::findBySql($sql);
@@ -126,7 +145,7 @@ class DevApp{
       $obj = $obj[0];
       if( (bool)$strict && ( $obj->status !=='ACTIVE' || $obj->dev_status !== 'ACTIVE' ) ){
         $this->name = null;
-        $this->errors['Self'][] = [0,256,"Dev/App not active.",__FILE__,__LINE__];
+        $this->errors['self'][] = [0,256,"Dev/App not active.",__FILE__,__LINE__];
         return false;
       }
       foreach ($obj as $key => $value) {
@@ -135,7 +154,7 @@ class DevApp{
       return true;
     }else{
       $this->name = null;
-      $this->errors['Self'][] = [0,256,"No App was found with give name: ({$name}).",__FILE__,__LINE__];
+      $this->errors['self'][] = [0,256,"No App was found with give name: ({$name}).",__FILE__,__LINE__];
     }
     return false;
   }
