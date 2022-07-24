@@ -2,14 +2,15 @@
 namespace TymFrontiers\API;
 use \TymFrontiers\Data,
     \TymFrontiers\MySQLDatabase,
+    \TymFrontiers\MultiForm,
     \TymFrontiers\InstanceError;
 
 class DevApp{
   use \TymFrontiers\Helper\MySQLDatabaseObject,
       \TymFrontiers\Helper\Pagination;
 
-  protected static $_primary_key='name';
-  protected static $_db_name=MYSQL_DEV_DB;
+  protected static $_primary_key = 'name';
+  protected static $_db_name;
   protected static $_table_name="apps";
   protected static $_prop_type = [];
   protected static $_prop_size = [];
@@ -21,7 +22,6 @@ class DevApp{
     "_pu_key",
     "_pr_key",
     "prefix",
-    "request_timeout",
     "domain",
     "endpoint",
     "title",
@@ -40,34 +40,19 @@ class DevApp{
   public $title;
   public $description;
   public $prefix;
-  public $request_timeout = "5S";
 
   private $_pu_key;
   private $_pr_key;
   protected $_created;
   protected $_updated;
   protected $_status = ["PENDING","ACTIVE","SUSPENDED","BANNED"];
-  public $request_timeout_opt = [
-    "5S" => "5 Seconds",
-    "15S" => "15 Seconds",
-    "30S" => "30 Seconds",
-    "5M" => "5 Minutes", // development
-    "30M" => "30 Minutes" // development
-  ];
 
   public $errors = [];
 
-  function __construct($app = [], string $puk="", bool $strict=false){
-    if (!empty($app)) {
-      self::_checkEnv();
-      if( \is_array($app) ){
-        $this->_createNew($app);
-      }else{
-        if( self::validName($app) && !empty($puk) ){
-          $this->_objtize($app,$puk,$strict);
-        }
-      }
-    }
+  function __construct (MySQLDatabase $conn, string $db, string $db_table = "apps") {
+    self::$_conn = $conn;
+    self::$_db_name = $db;
+    self::$_table_name = $db_table;
   }
   public function setStatus ( string $status ){
     if ( !empty($this->name) ) {
@@ -81,20 +66,18 @@ class DevApp{
   }
   public function publicKey(){ return $this->_pu_key; }
   public function privateKey(){ return $this->_pr_key; }
-  private function _createNew(array $app){
-    self::_checkEnv();
-    global $database;
-    if( \is_array($app) && (
-      \array_key_exists('name',$app) &&
-      \array_key_exists('prefix',$app) &&
-      \array_key_exists('request_timeout',$app) &&
-      \array_key_exists('user',$app) &&
-      \array_key_exists('title',$app) &&
-      \array_key_exists('description',$app)
-      ) ){
+  public function register (array $app, bool $activate = false) {
+    $req = ["name", "domain", "prefix", "user", "title", "description" ];
+    $unseen = [];
+    foreach ($app as $prop => $value) {
+      if ($this->isEmpty($prop, $value)) {
+        $unseen[] = $prop;
+      }
+    }
+    if ( empty($unseen) ){
       $app['name'] = \strtolower($app['name']);
       if( self::nameExists($app['name']) ){
-        $this->errors['self'][] = [0,256, "App name({$app['name']}) is not available.",__FILE__, __LINE__];
+        $this->errors['register'][] = [0,256, "App name({$app['name']}) is not available.",__FILE__, __LINE__];
         return false;
       }
       foreach($app as $key=>$val){
@@ -104,40 +87,53 @@ class DevApp{
       }
       $this->name = \strtolower($this->name);
       $this->live = false;
-      $this->status = 'PENDING';
+      $this->status = $activate ? "ACTIVE" : 'PENDING';
       $this->_pu_key = "puk-" . Data::uniqueRand('',48,Data::RAND_MIXED);
       $this->_pr_key = "prk-" . Data::uniqueRand('',64,Data::RAND_MIXED);
+      // get user privileges
+      $app_user = (new MultiForm(self::$_db_name, "users", "code", self::$_conn))->findById($app["user"]);
+      if (!$app_user) {
+        $this->errors['register'][] = [0,256, "App user({$app['user']}) not found.",__FILE__, __LINE__];
+        return false;
+      } if ($app_user->status !== "ACTIVE") {
+        $this->errors['register'][] = [0,256, "App user({$app['user']}) is not active.",__FILE__, __LINE__];
+        return false;
+      } if ((bool)$app_user->is_system) {
+        $this->live = isset($app["live"]) ? (bool)$app["live"] : false;
+      } else {
+        $this->live = false;
+      }
       if( $this->_create() ){
+        $this->load($this->name, $this->_pu_key);
         return true;
       }else{
         $this->name = null;
-        $this->errors['self'][] = [0,256, "Request failed at this this tym.",__FILE__, __LINE__];
+        $this->errors['register'][] = [0,256, "Request failed at this this tym.",__FILE__, __LINE__];
         if( \class_exists('\TymFrontiers\InstanceError') ){
-          $ex_errors = new InstanceError($database);
+          $ex_errors = new InstanceError(self::$_conn);
           if( !empty($ex_errors->errors) ){
-            foreach( $ex_errors->get(null,true) as $key=>$errs ){
+            foreach( $ex_errors->get("",true) as $key=>$errs ){
               foreach($errs as $err){
-                $this->errors['self'][] = [0,256, $err,__FILE__, __LINE__];
+                $this->errors['register'][] = [0,256, $err,__FILE__, __LINE__];
               }
             }
           }
         }
       }
     } else {
-      $this->errors['self'][] = [0,256, "Missing required parameters.",__FILE__, __LINE__];
+      $this->errors['register'][] = [0,256, "Missing required parameters: '".\implode("', '", $unseen). "'",__FILE__, __LINE__];
     }
     return false;
   }
-  private function _objtize(string $name, string $puk, bool $strict=false){
-    self::_checkEnv();
-    global $database;
-    $name = \strtolower($database->escapeValue($name));
-    $puk = $database->escapeValue($puk);
-    $adm_db = MYSQL_ADMIN_DB;
-    $sql = "SELECT a.name, a.live, a.status,a.user,a.domain, a.prefix, a.request_timeout, a.endpoint,a.title,a._pu_key,a._pr_key,a._created,
-                   d.status AS dev_status
+  public function load(string $name, string $puk, bool $strict=false){
+    $conn = self::$_conn;
+    $name = \strtolower($conn->escapeValue($name));
+    $puk = $conn->escapeValue($puk);
+    $sql = "SELECT a.name, a.live, a.status, a.user, a.domain, a.prefix, 
+                   a.endpoint,a.title,a._pu_key,a._pr_key,a._created,
+                   usr.`status` AS dev_status
             FROM :db:.:tbl: AS a
-            LEFT JOIN `{$adm_db}`.user AS d ON a.user = d.`_id`
+            LEFT JOIN :db:.users AS usr ON a.user = usr.`code`
             WHERE a.name='{$name}' AND a._pu_key = '{$puk}'
             LIMIT 1";
     $obj = self::findBySql($sql);
@@ -145,7 +141,7 @@ class DevApp{
       $obj = $obj[0];
       if( (bool)$strict && ( $obj->status !=='ACTIVE' || $obj->dev_status !== 'ACTIVE' ) ){
         $this->name = null;
-        $this->errors['self'][] = [0,256,"Dev/App not active.",__FILE__,__LINE__];
+        $this->errors['load'][] = [0,256,"Dev/App not active.",__FILE__,__LINE__];
         return false;
       }
       foreach ($obj as $key => $value) {
@@ -154,7 +150,7 @@ class DevApp{
       return true;
     }else{
       $this->name = null;
-      $this->errors['self'][] = [0,256,"No App was found with give name: ({$name}).",__FILE__,__LINE__];
+      $this->errors['load'][] = [0,256,"No App was found with give name: ({$name}).",__FILE__,__LINE__];
     }
     return false;
   }
@@ -162,31 +158,27 @@ class DevApp{
   public static function nameExists(string $name){
     $name = \strtolower($name);
     if( self::validName($name) ){
-      self::_checkEnv();
-      global $database;
       ###############
-      $name = $database->escapeValue($name);
+      $name = self::$_conn->escapeValue($name);
       return self::findBySql("SELECT name FROM :db:.:tbl: WHERE name='{$name}' LIMIT 1") ? true :false;
     }
     return false;
   }
   public static function validName(string $name){
-    return (bool) \preg_match('/^([a-z0-9\.\-\_]{5,35})$/s', $name);
+    return (bool) \preg_match('/^([a-z0-9\.\-]{5,35})$/s', $name);
   }
-  private static function _checkEnv(){
-    global $database;
-    if ( !$database instanceof \TymFrontiers\MySQLDatabase ) {
-      if(
-        !\defined("MYSQL_DEV_DB") ||
-        !\defined("MYSQL_SERVER") ||
-        !\defined("MYSQL_DEVELOPER_USERNAME") ||
-        !\defined("MYSQL_DEVELOPER_PASS")
-      ){
-        throw new \Exception("Required defination(s)[MYSQL_BASE_DB, MYSQL_SERVER, MYSQL_USER_USERNAME, MYSQL_USER_PASS] not [correctly] defined.", 1);
+  private static function _instantiate ($record) {
+    $class_name = \get_called_class();
+		// $object = new $class_name();
+		$object = new self (self::$_conn, static::$_db_name,static::$_table_name);
+		foreach ($record as $attribute=>$value) {
+      if ( !\is_int($attribute) ) {
+        $object->$attribute = $value;
       }
-      // check if guest is logged in
-      $GLOBALS['database'] = new \TymFrontiers\MySQLDatabase(MYSQL_SERVER,MYSQL_DEVELOPER_USERNAME,MYSQL_DEVELOPER_PASS,self::$_db_name);
-    }
+		}
+		return $object;
+	}
+  public function conn () {
+    return self::$_conn;
   }
-
 }
