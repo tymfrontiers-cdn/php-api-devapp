@@ -16,7 +16,6 @@ class DevApp{
   protected static $_prop_size = [];
   protected static $_db_fields = [
     "name",
-    "live",
     "status",
     "user",
     "_pu_key",
@@ -32,7 +31,6 @@ class DevApp{
 
 
   public $name;
-  public $live = false;
   public $status = "PENDING";
   public $user;
   public $domain = null;
@@ -86,7 +84,6 @@ class DevApp{
         }
       }
       $this->name = \strtolower($this->name);
-      $this->live = false;
       $this->status = $activate ? "ACTIVE" : 'PENDING';
       $this->_pu_key = "puk-" . Data::uniqueRand('',48,Data::RAND_MIXED);
       $this->_pr_key = "prk-" . Data::uniqueRand('',64,Data::RAND_MIXED);
@@ -98,10 +95,6 @@ class DevApp{
       } if ($app_user->status !== "ACTIVE") {
         $this->errors['register'][] = [0,256, "App user({$app['user']}) is not active.",__FILE__, __LINE__];
         return false;
-      } if ((bool)$app_user->is_system) {
-        $this->live = isset($app["live"]) ? (bool)$app["live"] : false;
-      } else {
-        $this->live = false;
       }
       if( $this->_create() ){
         $this->load($this->name, $this->_pu_key);
@@ -129,7 +122,7 @@ class DevApp{
     $conn = self::$_conn;
     $name = \strtolower($conn->escapeValue($name));
     $puk = $conn->escapeValue($puk);
-    $sql = "SELECT a.name, a.live, a.status, a.user, a.domain, a.prefix, 
+    $sql = "SELECT a.name, a.status, a.user, a.domain, a.prefix, 
                    a.endpoint,a.title,a._pu_key,a._pr_key,a._created,
                    usr.`status` AS dev_status
             FROM :db:.:tbl: AS a
