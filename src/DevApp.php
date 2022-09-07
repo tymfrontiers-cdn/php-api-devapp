@@ -125,7 +125,7 @@ class DevApp{
     $puk = $conn->escapeValue($puk);
     $sql = "SELECT a.name, a.status, a.user, a.domain, a.prefix, 
                    a.endpoint,a.title,a._pu_key,a._pr_key,a._created,
-                   usr.`status` AS dev_status, usr.is_system,
+                   usr.`status` AS dev_status, usr.is_system
             FROM :db:.:tbl: AS a
             LEFT JOIN :db:.users AS usr ON a.user = usr.`code`
             WHERE a.name='{$name}' AND a._pu_key = '{$puk}'
