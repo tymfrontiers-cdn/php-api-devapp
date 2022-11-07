@@ -65,7 +65,7 @@ class DevApp{
   }
   public function publicKey(){ return $this->_pu_key; }
   public function privateKey(){ return $this->_pr_key; }
-  public function register (array $app, bool $activate = false, bool $go_live = false) {
+  public function register (array $app, bool $activate = false) {
     $req = ["name", "domain", "prefix", "user", "title", "description" ];
     $unseen = [];
     foreach ($app as $prop => $value) {
@@ -88,7 +88,6 @@ class DevApp{
       $this->status = $activate ? "ACTIVE" : 'PENDING';
       $this->_pu_key = "puk-" . Data::uniqueRand('',48,Data::RAND_MIXED);
       $this->_pr_key = "prk-" . Data::uniqueRand('',64,Data::RAND_MIXED);
-      if ($go_live) $this->live = true;
       // get user privileges
       $app_user = (new MultiForm(self::$_db_name, "users", "code", self::$_conn))->findById($app["user"]);
       if (!$app_user) {
