@@ -102,14 +102,12 @@ class DevApp{
         return true;
       }else{
         $this->name = null;
-        $this->errors['register'][] = [0,256, "Request failed at this this tym.",__FILE__, __LINE__];
+        $this->errors['register'][] = [0,256, "Request failed at this this time.",__FILE__, __LINE__];
+        $this->mergeErrors();
         if( \class_exists('\TymFrontiers\InstanceError') ){
-          $ex_errors = new InstanceError(self::$_conn);
-          if( !empty($ex_errors->errors) ){
-            foreach( $ex_errors->get("",true) as $key=>$errs ){
-              foreach($errs as $err){
-                $this->errors['register'][] = [0,256, $err,__FILE__, __LINE__];
-              }
+          if( $ex_errors = (new InstanceError(self::$_conn, true))->get("", true) ){
+            foreach( $ex_errors as $err ){
+              $this->errors['register'][] = [6, 256, $err,__FILE__, __LINE__];
             }
           }
         }
