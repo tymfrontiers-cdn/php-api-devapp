@@ -105,7 +105,7 @@ class DevApp{
         $this->errors['register'][] = [0,256, "Request failed at this this time.",__FILE__, __LINE__];
         $this->mergeErrors();
         if( \class_exists('\TymFrontiers\InstanceError') ){
-          if( $ex_errors = (new InstanceError(self::$_conn, true))->get("", true) ){
+          if( $ex_errors = (new InstanceError(self::$_conn, true))->get("query", true) ){
             foreach( $ex_errors as $err ){
               $this->errors['register'][] = [6, 256, $err,__FILE__, __LINE__];
             }
