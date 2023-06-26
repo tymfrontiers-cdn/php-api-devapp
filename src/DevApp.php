@@ -4,7 +4,9 @@ use \TymFrontiers\Data,
     \TymFrontiers\MySQLDatabase,
     \TymFrontiers\MultiForm,
     \TymFrontiers\InstanceError;
-
+    
+use \AllowDynamicProperties;
+#[AllowDynamicProperties]
 class DevApp{
   use \TymFrontiers\Helper\MySQLDatabaseObject,
       \TymFrontiers\Helper\Pagination;
